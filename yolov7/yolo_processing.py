@@ -1,5 +1,4 @@
 import glob
-import sys
 from PIL import Image
 import torch
 import cv2
@@ -15,15 +14,22 @@ class Mamoa:
         self.pX = pX
         self.pY = pY
 
-def removeDuplicates(mamoas):
+
+def removeDuplicates(mamoas, offset):
     newList = []
-    for j in range(len(mamoas)):
-        if j is not i:
-            distance = math.sqrt(((self.pX - mamoas[j].pX)**2) + ((self.pY - mamoas[j].pY)**2))
-            print('index:',i, 'distance:', distance)
-            if distance <= 3:
-                index.append(j)
-    return index
+    flag = True
+    if mamoas:
+        newList.append(mamoas[0])
+        for i in mamoas:
+            for j in newList:
+                distance = math.sqrt(((i.pX - j.pX) ** 2) + ((i.pY - j.pY) ** 2))
+                if distance < offset:
+                    flag = False
+                    break
+            if flag:
+                newList.append(i)
+            flag = True
+    return newList
 
 
 def prepare_image(img_cropped, device):
@@ -72,8 +78,7 @@ def detectYolo(step):
     model = model.eval()
 
     dim = 640  # 40 pixels => 20x20 meters
-    slide = dim * step / 100
-
+    slide = round(dim * step / 100)
     xmin, ymin, xmax, ymax = 0, 0, dim, dim
     Image.MAX_IMAGE_PIXELS = None
     # for f in glob.glob("*.tif"):
@@ -82,6 +87,7 @@ def detectYolo(step):
     rows = round((height_im / dim) / (step / 100))
     columns = round((width_im / dim) / (step / 100))
     print("Columns:", columns, " Rows:", rows)
+    image_to_save = cv2.imread('cropped.tif')
     for row in range(rows):
         for column in range(columns):
             img_cropped = image.crop((xmin, ymin, xmax, ymax))
@@ -89,10 +95,22 @@ def detectYolo(step):
             n, x, y = resultYolo(img0, img, model(img)[0])
             for i in range(n):
                 mamoas.append(Mamoa(xmin + x[i], ymin + y[i]))
-            xmin = xmax
-            xmax = xmax + slide
+            image_to_save = cv2.rectangle(image_to_save, (xmin, ymin), (xmax, ymax), (255, 0, 0), 4)
+            xmin += slide
+            xmax += slide
         xmin = 0
-        xmax = slide
-        ymin = ymax
-        ymax = ymax + slide
-    removeDuplicates(mamoas)
+        xmax = dim
+        ymin += slide
+        ymax += slide
+    for m in mamoas:
+        print(m.pX, m.pY)
+        image_to_save = cv2.circle(image_to_save, (round(m.pX), round(m.pY)), 10, (0, 0, 255), 4)
+    mamoas = removeDuplicates(mamoas, 15)
+    print('oba')
+    for m in mamoas:
+        print(m.pX, m.pY)
+        image_to_save = cv2.circle(image_to_save, (round(m.pX), round(m.pY)), 15, (255, 0, 0), 4)
+    cv2.imwrite('50%.tif', image_to_save)
+
+
+detectYolo(50)

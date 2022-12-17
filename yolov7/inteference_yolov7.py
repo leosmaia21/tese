@@ -1,5 +1,3 @@
-import os
-import sys
 from yolo_processing import detectYolo
 
 # geo-coordinates of upper left and lower right corners of LRM image
@@ -27,4 +25,4 @@ print('m1:', m1, 'b1:', b1)
 m2 = (y1 - y2) / (y_geo1 - y_geo2)
 b2 = y1 - y_geo1 * m2
 print('m2:', m2, 'b2:', b2)
-# detectYolo(25)
+detectYolo('cropped.tif')

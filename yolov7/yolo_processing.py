@@ -10,9 +10,13 @@ from yolov7.utils.general import non_max_suppression, scale_coords, xyxy2xywh
 
 
 class Mamoa:
-    def __init__(self, pX, pY):
+    def __init__(self, pX, pY, prob):
         self.pX = pX
         self.pY = pY
+        self.prob = prob
+
+    # def convert2GeoCoord(self):
+# TODO: fazer a funcao de converter pixeis para geo coordenadas
 
 
 def removeDuplicates(mamoas, offset):
@@ -47,12 +51,10 @@ def prepare_image(img_cropped, device):
     return img0, img
 
 
-# def convertoPixeis2GeoCoord(x, y):
-
-
 def resultYolo(img0, img, pred):
     x = []
     y = []
+    prob = []
     pred = non_max_suppression(pred)
     for i, det in enumerate(pred):  # detections per image
         gn = torch.tensor(img0.shape)[[1, 0, 1, 0]]  # normalization gain whwh
@@ -64,10 +66,13 @@ def resultYolo(img0, img, pred):
                 xywh = (xyxy2xywh(torch.tensor(xyxy).view(1, 4)) / gn).view(-1).tolist()  # normalized xywh
                 x.append(xywh[0] * img.shape[2])
                 y.append(xywh[1] * img.shape[2])
-    return len(x), x, y
+                prob.append(f'{conf:.2f}')
+    return len(x), x, y, prob
 
 
-def detectYolo(step):
+def detectYolo(filename, step=20, offset=20):
+    """Funtion to run yolov7, arguements are the filename, step and offset, step(default=20) is the percentage for the
+    image slide, and the offset(default=20) is the number of pixeis i which duplicates will be removed"""
     print("Running YOLOv5")
     mamoas = []
     weights = []
@@ -82,20 +87,20 @@ def detectYolo(step):
     xmin, ymin, xmax, ymax = 0, 0, dim, dim
     Image.MAX_IMAGE_PIXELS = None
     # for f in glob.glob("*.tif"):
-    image = Image.open('cropped.tif')
+    image = Image.open(filename)
     width_im, height_im = image.size
     rows = round((height_im / dim) / (step / 100))
     columns = round((width_im / dim) / (step / 100))
     print("Columns:", columns, " Rows:", rows)
-    image_to_save = cv2.imread('cropped.tif')
-    for row in range(rows):
-        for column in range(columns):
+    image_to_save = cv2.imread(filename)
+    for row in range(round(rows)):
+        for column in range(round(columns)):
             img_cropped = image.crop((xmin, ymin, xmax, ymax))
             img0, img = prepare_image(img_cropped, device)
-            n, x, y = resultYolo(img0, img, model(img)[0])
+            n, x, y, prob = resultYolo(img0, img, model(img)[0])
             for i in range(n):
-                mamoas.append(Mamoa(xmin + x[i], ymin + y[i]))
-            image_to_save = cv2.rectangle(image_to_save, (xmin, ymin), (xmax, ymax), (255, 0, 0), 4)
+                mamoas.append(Mamoa(xmin + x[i], ymin + y[i], prob[i]))
+            # image_to_save = cv2.rectangle(image_to_save, (xmin, ymin), (xmax, ymax), (255, 0, 0), 4)
             xmin += slide
             xmax += slide
         xmin = 0
@@ -103,14 +108,14 @@ def detectYolo(step):
         ymin += slide
         ymax += slide
     for m in mamoas:
-        print(m.pX, m.pY)
-        image_to_save = cv2.circle(image_to_save, (round(m.pX), round(m.pY)), 10, (0, 0, 255), 4)
-    mamoas = removeDuplicates(mamoas, 15)
-    print('oba')
+        image_to_save = cv2.circle(image_to_save, (round(m.pX), round(m.pY)), 15, (0, 0, 255), 6)
+    mamoas = removeDuplicates(mamoas, offset)
     for m in mamoas:
-        print(m.pX, m.pY)
-        image_to_save = cv2.circle(image_to_save, (round(m.pX), round(m.pY)), 15, (255, 0, 0), 4)
-    cv2.imwrite('50%.tif', image_to_save)
+        image_to_save = cv2.circle(image_to_save, (round(m.pX), round(m.pY)), 20, (255, 0, 0), 6)
+        image_to_save = cv2.putText(image_to_save, str(m.prob), (round(m.pX) - 30, round(m.pY) - 30),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 0, 255), 4)
+    cv2.imwrite('cropped_40%.tif', image_to_save)
 
 
-detectYolo(50)
+if __name__ == '__main__':
+    detectYolo('cropped.tif', step=40, offset=20)

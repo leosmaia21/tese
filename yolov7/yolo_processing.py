@@ -5,7 +5,6 @@ import cv2
 import numpy as np
 import math
 from yolov7.models.experimental import attempt_load
-from yolov7.utils.datasets import letterbox
 from yolov7.utils.general import non_max_suppression, scale_coords, xyxy2xywh
 
 
@@ -39,7 +38,7 @@ def removeDuplicates(mamoas, offset):
 def prepare_image(img_cropped, device):
     """This function receives the image(PIL) and the device as arguments, returns two images, one in cv2(BGR) format and
     the other ready to be used in the model """
-    img0 = cv2.cvtColor(np.array(img_cropped), cv2.COLOR_RGB2BGR)
+    img0 = cv2.cvtColor(np.array(img_cropped), cv2.COLOR_RGB2BGR) #type:ignore
     img = letterbox(img0)[0]
     img = img[:, :, ::-1].transpose(2, 0, 1)  # BGR to RGB, to 3x416x416
     img = np.ascontiguousarray(img)
@@ -92,7 +91,7 @@ def detectYolo(filename, step=20, offset=20):
     rows = round((height_im / dim) / (step / 100))
     columns = round((width_im / dim) / (step / 100))
     print("Columns:", columns, " Rows:", rows)
-    image_to_save = cv2.imread(filename)
+    image_to_save = cv2.imread(filename) #type: ignore
     for row in range(round(rows)):
         for column in range(round(columns)):
             img_cropped = image.crop((xmin, ymin, xmax, ymax))

@@ -1,2 +1,0 @@
-def ola():
-    print('test')

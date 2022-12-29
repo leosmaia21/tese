@@ -1,4 +1,3 @@
-import glob
 from PIL import Image
 import torch
 import cv2
@@ -12,16 +11,31 @@ from yolov7.models.experimental import attempt_load
 from yolov7.utils.datasets import letterbox
 from yolov7.utils.general import non_max_suppression, scale_coords, xyxy2xywh
 from jakteristics import las_utils, compute_features, FEATURE_NAMES
+import pickle
 
+
+def map(value, min1, max1, min2, max2):
+	return (((value - min1) * (max2 - min2)) / (max1 - min1)) + min2
 
 
 class Mamoa:
-    def __init__(self, pX, pY, prob):
+    def __init__(self, pX, pY, prob, bb):
         self.pX = pX
         self.pY = pY
         self.prob = prob
+        self.bb = bb
+        self.bb_GeoCoord = []
+        self.afterValidation = False
 
-    # def convert2GeoCoord(self,):
+    def convert2GeoCoord(self, tifGeoCoord, width_im, height_im):
+        self.bb_GeoCoord.append(map(self.bb[0], 0, width_im, tifGeoCoord[0], tifGeoCoord[2])) 
+        self.bb_GeoCoord.append(map(self.bb[1], 0, height_im, tifGeoCoord[1], tifGeoCoord[3])) 
+        self.bb_GeoCoord.append(map(self.bb[2], 0, width_im, tifGeoCoord[0], tifGeoCoord[2]))
+        self.bb_GeoCoord.append(map(self.bb[0], 0, height_im, tifGeoCoord[1], tifGeoCoord[3])) 
+
+        return self.bb_GeoCoord
+    
+        
 # TODO: fazer a funcao de converter pixeis para geo coordenadas
 
 
@@ -43,7 +57,7 @@ def removeDuplicates(mamoas, offset):
 
 
 # Validates a detection using the Point Clouds
-def pointCloud(validationModel, pointClouds, cropExtent, className, bb):
+def pointCloud(validationModel, pointClouds, bb):
 	tmp = ""
 	for cloud in os.listdir(pointClouds):
 		tmp = pointClouds + "/" + cloud
@@ -109,6 +123,7 @@ def pointCloud(validationModel, pointClouds, cropExtent, className, bb):
 def resultYolo(img_cropped, model, device):
     x = []
     y = []
+    bb = []
     prob = []
     img0 = cv2.cvtColor(np.array(img_cropped), cv2.COLOR_RGB2BGR) #type:ignore
     img = letterbox(img0)[0]
@@ -131,31 +146,37 @@ def resultYolo(img_cropped, model, device):
                 xywh = (xyxy2xywh(torch.tensor(xyxy).view(1, 4)) / gn).view(-1).tolist()  #type: ignore 
                 x.append(xywh[0] * img.shape[2])
                 y.append(xywh[1] * img.shape[2])
+                # print("valores: ", int(xyxy[0]), int(xyxy[1]), int(xyxy[2]), int(xyxy[3]))
                 prob.append(f'{conf:.2f}')
-    return len(x), x, y, prob
+                bb.append(xyxy)
+    return len(x), x, y, prob, bb
 
 
 def detectYolo(filename, step=20, offset=20):
-    """Funtion to run yolov7, arguements are the filename, step and offset, step(default=20) is the percentage for the
+    """Function to run yolov7, arguements are the filename, step and offset, step(default=20) is the percentage for the
     image slide, and the offset(default=20) is the number of pixeis i which duplicates will be removed"""
 
     print("Running YOLOv7")
     mamoas = []
-    weights = []
 
-    for weight in glob.glob("*.pt"):
-        weights.append(weight)
+    weights = 'best.pt'
+    validationModel = pickle.load(open("pointCloud.sav", "rb"))
+    pointClouds = "../las"
 
     #load model
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     model = attempt_load(weights, map_location=device)
     model = model.eval()
 
-    dim = 640  # 40 pixels => 20x20 meters
+    dim = 640
     slide = round(dim * step / 100)
 
     xmin, ymin, xmax, ymax = 0, 0, dim, dim
 
+    geoRef = rasterio.open(filename)
+    tifGeoCoord = (geoRef.bounds[0], geoRef.bounds[1], geoRef.bounds[2], geoRef.bounds[3])
+    print("coordenadas reais:", tifGeoCoord)
+    
     Image.MAX_IMAGE_PIXELS = None
     image = Image.open(filename).convert('RGB')
     width_im, height_im = image.size
@@ -163,14 +184,19 @@ def detectYolo(filename, step=20, offset=20):
     rows = round((height_im / dim) / (step / 100))
     columns = round((width_im / dim) / (step / 100))
 
-    print("Columns:", columns, " Rows:", rows)
+    # print("Columns:", columns, " Rows:", rows)
 
     for row in range(round(rows)):
         for column in range(round(columns)):
             img_cropped = image.crop((xmin, ymin, xmax, ymax))
-            n, x, y, prob = resultYolo(img_cropped, model, device)
+            n, x, y, prob, bb = resultYolo(img_cropped, model, device)
             for i in range(n):
-                mamoas.append(Mamoa(xmin + x[i], ymin + y[i], prob[i]))
+                bb_aux = []
+                bb_aux.append(int(bb[i][0]) + xmin)
+                bb_aux.append(int(bb[i][1]) + ymin)
+                bb_aux.append(int(bb[i][2]) + xmin)
+                bb_aux.append(int(bb[i][3]) + ymin)
+                mamoas.append(Mamoa(xmin + x[i], ymin + y[i], prob[i], bb_aux))
             xmin += slide
             xmax += slide
         xmin = 0
@@ -178,22 +204,35 @@ def detectYolo(filename, step=20, offset=20):
         ymin += slide
         ymax += slide
 
-
     mamoas = removeDuplicates(mamoas, offset)
-    src = rasterio.open('Arcos-lrm.tif')
-    image = Image.open('Arcos-lrm.tif').convert('RGB')
-    width_im, height_im = image.size
-    # image = image.crop((int(width_im/2 - 1000), int(width_im/2 +1000), int(height_im/4 -1000), int(height_im/4 + 1000)))
-    width_im, height_im = image.size
-    raster_transform = src.transform
 
-    pixel_x = width_im / 2
-    pixel_y = height_im / 4
+    #validation with points cloud
+    for mamoa in mamoas:
+        mamoa.convert2GeoCoord(tifGeoCoord, width_im, height_im)
+        mamoa.afterValidation = pointCloud(validationModel, pointClouds, mamoa.bb_GeoCoord)
 
 
-    x,y = rasterio.transform.xy(transform = raster_transform, 
-                                rows = pixel_y, 
-                                cols = pixel_x)
+    # img = cv2.imread("cropped.tif")
+    # for m in mamoas:
+    #     print("valores: ", int(m.bb[0]), int(m.bb[1]), int(m.bb[2]), int(m.bb[3]))
+    #     start = (int(m.bb[0]), int(m.bb[1]))
+    #     end = (int(m.bb[2]), int(m.bb[3]))
+    #     img = cv2.rectangle(img, start, end, (255,0,0), 3)
+    # cv2.imwrite("bb.tif", img)
+    # src = rasterio.open('Arcos-lrm.tif')
+    # image = Image.open('Arcos-lrm.tif').convert('RGB')
+    # width_im, height_im = image.size
+    # # image = image.crop((int(width_im/2 - 1000), int(width_im/2 +1000), int(height_im/4 -1000), int(height_im/4 + 1000)))
+    # width_im, height_im = image.size
+    # raster_transform = src.transform
+
+    # pixel_x = width_im / 2
+    # pixel_y = height_im / 4
+
+
+    # x,y = rasterio.transform.xy(transform = raster_transform, 
+    #                             rows = pixel_y, 
+    #                             cols = pixel_x)
     # print(mamoas[0].pX, mamoas[0].pY)
     # xMinImg = src.bounds[0]
     # xMaxImg = src.bounds[2]

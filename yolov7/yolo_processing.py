@@ -28,15 +28,13 @@ class Mamoa:
         self.afterValidation = False
 
     def convert2GeoCoord(self, tifGeoCoord, width_im, height_im):
-        self.bb_GeoCoord.append(map(self.bb[0], 0, width_im, tifGeoCoord[0], tifGeoCoord[2])) 
-        self.bb_GeoCoord.append(map(self.bb[1], 0, height_im, tifGeoCoord[1], tifGeoCoord[3])) 
-        self.bb_GeoCoord.append(map(self.bb[2], 0, width_im, tifGeoCoord[0], tifGeoCoord[2]))
-        self.bb_GeoCoord.append(map(self.bb[0], 0, height_im, tifGeoCoord[1], tifGeoCoord[3])) 
+        self.bb_GeoCoord.append(int(map(self.bb[0], 0, width_im, tifGeoCoord[0], tifGeoCoord[2])))
+        self.bb_GeoCoord.append(int(map(self.bb[1], 0, height_im, tifGeoCoord[1], tifGeoCoord[3])))
+        self.bb_GeoCoord.append(int(map(self.bb[2], 0, width_im, tifGeoCoord[0], tifGeoCoord[2])))
+        self.bb_GeoCoord.append(int(map(self.bb[3], 0, height_im, tifGeoCoord[1], tifGeoCoord[3])))
 
         return self.bb_GeoCoord
     
-        
-# TODO: fazer a funcao de converter pixeis para geo coordenadas
 
 
 def removeDuplicates(mamoas, offset):
@@ -58,67 +56,68 @@ def removeDuplicates(mamoas, offset):
 
 # Validates a detection using the Point Clouds
 def pointCloud(validationModel, pointClouds, bb):
-	tmp = ""
-	for cloud in os.listdir(pointClouds):
-		tmp = pointClouds + "/" + cloud
-		break
+    tmp = ""
+    for cloud in os.listdir(pointClouds):
+        tmp = pointClouds + "/" + cloud
+        break
 
 	# Creates empty .las file to later populate it with points
-	with laspy.open(tmp) as f:
-		w = laspy.open("tmp.las", mode="w", header = f.header)
-		w.close()
+    with laspy.open(tmp) as f:
+        w = laspy.open("tmp.las", mode="w", header = f.header)
+        w.close()
 
-	count = 0
+    count = 0
 	# Iterates over the point clouds
-	with laspy.open("tmp.las", mode = "a") as w:
-		for cloud in os.listdir(pointClouds):
-			with laspy.open(pointClouds + "/" + cloud) as f:
+    with laspy.open("tmp.las", mode = "a") as w:
+        for cloud in os.listdir(pointClouds):
+            with laspy.open(pointClouds + "/" + cloud) as f:
 				# Checks if there is an overlap with the cropped image and the point cloud
-				if bb[0] <= f.header.x_max and bb[1] >= f.header.x_min and bb[2] <= f.header.y_max and bb[3] >= f.header.y_min:
-					# Appends the points of the overlapping region to the previously created .las file
-					las = f.read()#type: ignore
-					x, y = las.points.x.copy(), las.points.y.copy()
-					mask = (x >= bb[0]) & (x <= bb[1]) & (y >= bb[2]) & (y <= bb[3])
-					roi = las.points[mask]
-					w.append_points(roi)	#type: ignore
-					count += 1
+                if bb[0] <= f.header.x_max and bb[1] >= f.header.x_min and bb[2] <= f.header.y_max and bb[3] >= f.header.y_min:
+                    # Appends the points of the overlapping region to the previously created .las file
+                    las = f.read()	#type: ignore
+                    x, y = las.points.x.copy(), las.points.y.copy()
+                    mask = (x >= bb[0]) & (x <= bb[1]) & (y >= bb[2]) & (y <= bb[3])
+                    roi = las.points[mask]
+                    w.append_points(roi)	#type: ignore
+                    count += 1
+
 	
 	# If temporary las was populated with points
-	if count > 0:
-		xyz = las_utils.read_las_xyz("tmp.las")
+    if count > 0:
+        xyz = las_utils.read_las_xyz("tmp.las")
 
 		# Compute 3D features
-		features = compute_features(xyz, search_radius=3)#type: ignore
-		
-		if np.isnan(features).any() == False:
+        features = compute_features(xyz, search_radius=3)	#type: ignore
+	
+        if np.isnan(features).any() == False:
 
-			stats = {}
-			for i in FEATURE_NAMES:
-				stats[i] = []
-			
-			for feature in features:
-				for i in range(len(FEATURE_NAMES)):
-					stats[FEATURE_NAMES[i]].append(feature[i])
+            stats = {}
+            for i in FEATURE_NAMES:
+                stats[i] = []
+ 
+            for feature in features:
+                for i in range(len(FEATURE_NAMES)):
+                    stats[FEATURE_NAMES[i]].append(feature[i])
 
-			# Each point contributes to 14 features which is too heavy, therefore calculate
-			# the mean and standard deviation of of every feature for each point
-			X = []
-			for i in FEATURE_NAMES:		
-				mean = np.mean(stats[i])
-				stdev = np.std(stats[i])
-				X += [mean,stdev]
+            # Each point contributes to 14 features which is too heavy, therefore calculate
+            # the mean and standard deviation of of every feature for each point
+            X = []
+            for i in FEATURE_NAMES:		
+                mean = np.mean(stats[i])
+                stdev = np.std(stats[i])
+                X += [mean,stdev]
 
 			# Removes temporary las
-			os.remove("tmp.las")
+            os.remove("tmp.las")
 			
 			# 1 is validated, -1 is not validated
-			if validationModel.predict([X]) == -1:
-				return False
-			else:
-				return True
+            if validationModel.predict([X]) == -1:
+                return False
+            else:
+                return True
 
 	# Return -1 if there are no Point Clouds in this region
-	return -1
+    return -1
 
 def resultYolo(img_cropped, model, device):
     x = []
@@ -130,6 +129,7 @@ def resultYolo(img_cropped, model, device):
     img = img[:, :, ::-1].transpose(2, 0, 1)  # BGR to RGB, to 3x416x416
     img = np.ascontiguousarray(img)
     img = torch.from_numpy(img).to(device)
+    # print("shape", img.shape)
     img = img.float()  # uint8 to fp16/32
     img /= 255.0  # 0 - 255 to 0.0 - 1.0
     if img.ndimension() == 3:
@@ -152,7 +152,7 @@ def resultYolo(img_cropped, model, device):
     return len(x), x, y, prob, bb
 
 
-def detectYolo(filename, step=20, offset=20):
+def detectYolov7(filename, step=20, offset=20):
     """Function to run yolov7, arguements are the filename, step and offset, step(default=20) is the percentage for the
     image slide, and the offset(default=20) is the number of pixeis i which duplicates will be removed"""
 
@@ -174,18 +174,30 @@ def detectYolo(filename, step=20, offset=20):
     xmin, ymin, xmax, ymax = 0, 0, dim, dim
 
     geoRef = rasterio.open(filename)
-    tifGeoCoord = (geoRef.bounds[0], geoRef.bounds[1], geoRef.bounds[2], geoRef.bounds[3])
+    #the geotif gives the coordinates of the lower left point and the upper right point,
+    #instead of the upper left point and the lower right point
+    tifGeoCoord = (geoRef.bounds[0], geoRef.bounds[3], geoRef.bounds[2], geoRef.bounds[1])
     print("coordenadas reais:", tifGeoCoord)
     
     Image.MAX_IMAGE_PIXELS = None
     image = Image.open(filename).convert('RGB')
     width_im, height_im = image.size
+    image = image.crop((8, 22576, 2026, 23942))
+    image.save("teste.tif")
+
+    x1 = map(8, 0 , width_im, tifGeoCoord[0], tifGeoCoord[2])
+    x2 = map(2026, 0 , width_im, tifGeoCoord[0], tifGeoCoord[2])
+    y1 = map(22567, 0 , height_im, tifGeoCoord[1], tifGeoCoord[3])
+    y2 = map(23942, 0 , height_im, tifGeoCoord[1], tifGeoCoord[3])
+
+    width_im, height_im = image.size
+    print("cordenadas:", int(x1),int(y1), int(x2),int(y2))
 
     rows = round((height_im / dim) / (step / 100))
     columns = round((width_im / dim) / (step / 100))
 
-    # print("Columns:", columns, " Rows:", rows)
-
+    print("Columns:", columns, " Rows:", rows)
+    print("type", type(model))
     for row in range(round(rows)):
         for column in range(round(columns)):
             img_cropped = image.crop((xmin, ymin, xmax, ymax))
@@ -196,7 +208,7 @@ def detectYolo(filename, step=20, offset=20):
                 bb_aux.append(int(bb[i][1]) + ymin)
                 bb_aux.append(int(bb[i][2]) + xmin)
                 bb_aux.append(int(bb[i][3]) + ymin)
-                mamoas.append(Mamoa(xmin + x[i], ymin + y[i], prob[i], bb_aux))
+                mamoas.append(Mamoa(xmin + x[i], ymin + y[i], prob[i], bb_aux.copy()))
             xmin += slide
             xmax += slide
         xmin = 0
@@ -206,11 +218,21 @@ def detectYolo(filename, step=20, offset=20):
 
     mamoas = removeDuplicates(mamoas, offset)
 
+
     #validation with points cloud
     for mamoa in mamoas:
         mamoa.convert2GeoCoord(tifGeoCoord, width_im, height_im)
+        print(mamoa.bb_GeoCoord)
         mamoa.afterValidation = pointCloud(validationModel, pointClouds, mamoa.bb_GeoCoord)
 
+    image = cv2.imread("teste.tif")	#type: ignore
+    print("tamanho", len(mamoas))
+    for m in mamoas:
+        image = cv2.rectangle(image, (m.bb[0], m.bb[1]), (m.bb[2], m.bb[3]), (255, 0, 0), 4)
+        if m.afterValidation:
+            image = cv2.rectangle(image, (m.bb[0], m.bb[1]), (m.bb[2], m.bb[3]), (0, 0, 255), 4)
+
+    cv2.imwrite("teste.tif", image)
 
     # img = cv2.imread("cropped.tif")
     # for m in mamoas:
@@ -251,4 +273,4 @@ def detectYolo(filename, step=20, offset=20):
 
 
 if __name__ == '__main__':
-    detectYolo('cropped.tif', step=40, offset=20)
+    detectYolov7('Arcos-lrm.tif', step=40, offset=20)

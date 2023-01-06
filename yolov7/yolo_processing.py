@@ -1,4 +1,5 @@
 from PIL import Image
+import os.path
 import torch
 import cv2
 import numpy as np
@@ -20,6 +21,8 @@ def map(value, min1, max1, min2, max2):
 
 class Mamoa:
     def __init__(self, pX, pY, prob, bb):
+        # bb gives the  pixels(x1, y1, x2, y2) -> top left and botton right points
+        # bb_GeoCoord gives the coordinates botton left and top right_
         self.pX = pX
         self.pY = pY
         self.prob = prob
@@ -29,9 +32,9 @@ class Mamoa:
 
     def convert2GeoCoord(self, tifGeoCoord, width_im, height_im):
         self.bb_GeoCoord.append(int(map(self.bb[0], 0, width_im, tifGeoCoord[0], tifGeoCoord[2])))
-        self.bb_GeoCoord.append(int(map(self.bb[1], 0, height_im, tifGeoCoord[1], tifGeoCoord[3])))
+        self.bb_GeoCoord.append(int(map(height_im - self.bb[3], 0, height_im, tifGeoCoord[1], tifGeoCoord[3])))
         self.bb_GeoCoord.append(int(map(self.bb[2], 0, width_im, tifGeoCoord[0], tifGeoCoord[2])))
-        self.bb_GeoCoord.append(int(map(self.bb[3], 0, height_im, tifGeoCoord[1], tifGeoCoord[3])))
+        self.bb_GeoCoord.append(int(map(height_im - self.bb[1], 0, height_im, tifGeoCoord[1], tifGeoCoord[3])))
 
         return self.bb_GeoCoord
     
@@ -56,6 +59,10 @@ def removeDuplicates(mamoas, offset):
 
 # Validates a detection using the Point Clouds
 def pointCloud(validationModel, pointClouds, bb):
+
+    if os.path.isfile("tmp.las"):
+        os.remove("tmp.las")
+
     tmp = ""
     for cloud in os.listdir(pointClouds):
         tmp = pointClouds + "/" + cloud
@@ -72,14 +79,16 @@ def pointCloud(validationModel, pointClouds, bb):
         for cloud in os.listdir(pointClouds):
             with laspy.open(pointClouds + "/" + cloud) as f:
 				# Checks if there is an overlap with the cropped image and the point cloud
-                if bb[0] <= f.header.x_max and bb[1] >= f.header.x_min and bb[2] <= f.header.y_max and bb[3] >= f.header.y_min:
+                if f.header.x_min <= bb[0] and f.header.y_min <= bb[1] and  f.header.x_max >= bb[2] and f.header.y_max >= bb[3]:
+                # if bb[0] <= f.header.x_max and bb[1] >= f.header.x_min and bb[2] <= f.header.y_max and bb[3] >= f.header.y_min:
                     # Appends the points of the overlapping region to the previously created .las file
                     las = f.read()	#type: ignore
                     x, y = las.points.x.copy(), las.points.y.copy()
-                    mask = (x >= bb[0]) & (x <= bb[1]) & (y >= bb[2]) & (y <= bb[3])
+                    mask = (x >= bb[0]) & (x <= bb[2]) & (y >= bb[1]) & (y <= bb[3])
                     roi = las.points[mask]
                     w.append_points(roi)	#type: ignore
                     count += 1
+                    print(count)
 
 	
 	# If temporary las was populated with points
@@ -88,7 +97,6 @@ def pointCloud(validationModel, pointClouds, bb):
 
 		# Compute 3D features
         features = compute_features(xyz, search_radius=3)	#type: ignore
-	
         if np.isnan(features).any() == False:
 
             stats = {}
@@ -107,16 +115,20 @@ def pointCloud(validationModel, pointClouds, bb):
                 stdev = np.std(stats[i])
                 X += [mean,stdev]
 
+            print("X:", len(X))
 			# Removes temporary las
             os.remove("tmp.las")
 			
 			# 1 is validated, -1 is not validated
             if validationModel.predict([X]) == -1:
+                print("false")
                 return False
             else:
+                print("true")
                 return True
 
 	# Return -1 if there are no Point Clouds in this region
+    print("erro")
     return -1
 
 def resultYolo(img_cropped, model, device):
@@ -158,7 +170,6 @@ def detectYolov7(filename, step=20, offset=20):
 
     print("Running YOLOv7")
     mamoas = []
-
     weights = 'best.pt'
     validationModel = pickle.load(open("pointCloud.sav", "rb"))
     pointClouds = "../las"
@@ -174,9 +185,7 @@ def detectYolov7(filename, step=20, offset=20):
     xmin, ymin, xmax, ymax = 0, 0, dim, dim
 
     geoRef = rasterio.open(filename)
-    #the geotif gives the coordinates of the lower left point and the upper right point,
-    #instead of the upper left point and the lower right point
-    tifGeoCoord = (geoRef.bounds[0], geoRef.bounds[3], geoRef.bounds[2], geoRef.bounds[1])
+    tifGeoCoord = (geoRef.bounds[0], geoRef.bounds[1], geoRef.bounds[2], geoRef.bounds[3])
     print("coordenadas reais:", tifGeoCoord)
     
     Image.MAX_IMAGE_PIXELS = None
@@ -186,12 +195,13 @@ def detectYolov7(filename, step=20, offset=20):
     image.save("teste.tif")
 
     x1 = map(8, 0 , width_im, tifGeoCoord[0], tifGeoCoord[2])
+    y1 = map(height_im - 23942, 0 , height_im, tifGeoCoord[1], tifGeoCoord[3])
     x2 = map(2026, 0 , width_im, tifGeoCoord[0], tifGeoCoord[2])
-    y1 = map(22567, 0 , height_im, tifGeoCoord[1], tifGeoCoord[3])
-    y2 = map(23942, 0 , height_im, tifGeoCoord[1], tifGeoCoord[3])
+    y2 = map(height_im - 22567, 0 , height_im, tifGeoCoord[1], tifGeoCoord[3])
+    tifGeoCoord = (x1, y1, x2, y2) 
 
     width_im, height_im = image.size
-    print("cordenadas:", int(x1),int(y1), int(x2),int(y2))
+    # print("cordenadas:", int(x1),int(y1), int(x2),int(y2))
 
     rows = round((height_im / dim) / (step / 100))
     columns = round((width_im / dim) / (step / 100))
@@ -222,17 +232,17 @@ def detectYolov7(filename, step=20, offset=20):
     #validation with points cloud
     for mamoa in mamoas:
         mamoa.convert2GeoCoord(tifGeoCoord, width_im, height_im)
-        print(mamoa.bb_GeoCoord)
+        print("geo:", mamoa.bb_GeoCoord)
         mamoa.afterValidation = pointCloud(validationModel, pointClouds, mamoa.bb_GeoCoord)
 
     image = cv2.imread("teste.tif")	#type: ignore
-    print("tamanho", len(mamoas))
-    for m in mamoas:
-        image = cv2.rectangle(image, (m.bb[0], m.bb[1]), (m.bb[2], m.bb[3]), (255, 0, 0), 4)
-        if m.afterValidation:
-            image = cv2.rectangle(image, (m.bb[0], m.bb[1]), (m.bb[2], m.bb[3]), (0, 0, 255), 4)
+    # print("tamanho", len(mamoas))
+    # for m in mamoas:
+    #     image = cv2.rectangle(image, (m.bb[0], m.bb[1]), (m.bb[2], m.bb[3]), (255, 0, 0), 4)
+    #     if m.afterValidation == True:
+    #         image = cv2.rectangle(image, (m.bb[0], m.bb[1]), (m.bb[2], m.bb[3]), (0, 0, 255), 2)
 
-    cv2.imwrite("teste.tif", image)
+    # cv2.imwrite("teste.tif", image)
 
     # img = cv2.imread("cropped.tif")
     # for m in mamoas:

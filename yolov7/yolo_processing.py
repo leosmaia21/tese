@@ -115,7 +115,6 @@ def pointCloud(validationModel, pointClouds, bb):
                 stdev = np.std(stats[i])
                 X += [mean,stdev]
 
-            print("X:", len(X))
 			# Removes temporary las
             os.remove("tmp.las")
 			
@@ -191,15 +190,16 @@ def detectYolov7(filename, step=20, offset=20):
     Image.MAX_IMAGE_PIXELS = None
     image = Image.open(filename).convert('RGB')
     width_im, height_im = image.size
-    image = image.crop((8, 22576, 2026, 23942))
-    image.save("teste.tif")
+    xy = (0, 22705, 2000, 24165)
+    image = image.crop(xy)
+    image.save("teste1.tif")
 
-    x1 = map(8, 0 , width_im, tifGeoCoord[0], tifGeoCoord[2])
-    y1 = map(height_im - 23942, 0 , height_im, tifGeoCoord[1], tifGeoCoord[3])
-    x2 = map(2026, 0 , width_im, tifGeoCoord[0], tifGeoCoord[2])
-    y2 = map(height_im - 22567, 0 , height_im, tifGeoCoord[1], tifGeoCoord[3])
+    x1 = map(xy[0], 0 , width_im, tifGeoCoord[0], tifGeoCoord[2])
+    y1 = map(height_im - xy[3], 0 , height_im, tifGeoCoord[1], tifGeoCoord[3])
+    x2 = map(xy[2], 0 , width_im, tifGeoCoord[0], tifGeoCoord[2])
+    y2 = map(height_im - xy[1], 0 , height_im, tifGeoCoord[1], tifGeoCoord[3])
     tifGeoCoord = (x1, y1, x2, y2) 
-
+    print(tifGeoCoord)
     width_im, height_im = image.size
     # print("cordenadas:", int(x1),int(y1), int(x2),int(y2))
 
@@ -207,7 +207,6 @@ def detectYolov7(filename, step=20, offset=20):
     columns = round((width_im / dim) / (step / 100))
 
     print("Columns:", columns, " Rows:", rows)
-    print("type", type(model))
     for row in range(round(rows)):
         for column in range(round(columns)):
             img_cropped = image.crop((xmin, ymin, xmax, ymax))
@@ -232,17 +231,16 @@ def detectYolov7(filename, step=20, offset=20):
     #validation with points cloud
     for mamoa in mamoas:
         mamoa.convert2GeoCoord(tifGeoCoord, width_im, height_im)
-        print("geo:", mamoa.bb_GeoCoord)
         mamoa.afterValidation = pointCloud(validationModel, pointClouds, mamoa.bb_GeoCoord)
 
-    image = cv2.imread("teste.tif")	#type: ignore
-    # print("tamanho", len(mamoas))
-    # for m in mamoas:
-    #     image = cv2.rectangle(image, (m.bb[0], m.bb[1]), (m.bb[2], m.bb[3]), (255, 0, 0), 4)
-    #     if m.afterValidation == True:
-    #         image = cv2.rectangle(image, (m.bb[0], m.bb[1]), (m.bb[2], m.bb[3]), (0, 0, 255), 2)
+    image = cv2.imread("teste1.tif")	#type: ignore
+    print("tamanho", len(mamoas))
+    for m in mamoas:
+        image = cv2.rectangle(image, (m.bb[0], m.bb[1]), (m.bb[2], m.bb[3]), (255, 0, 0), 4)
+        if m.afterValidation == True:
+            image = cv2.rectangle(image, (m.bb[0], m.bb[1]), (m.bb[2], m.bb[3]), (0, 0, 255), 2)
 
-    # cv2.imwrite("teste.tif", image)
+    cv2.imwrite("teste1.tif", image)
 
     # img = cv2.imread("cropped.tif")
     # for m in mamoas:

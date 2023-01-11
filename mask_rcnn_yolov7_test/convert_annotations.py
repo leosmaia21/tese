@@ -13,8 +13,8 @@ def map(value, min1, max1, min2, max2):
 
 
 def get_labels():
-    filename = "Viana-lrm.tif"
-    anotacoes = "anotacoes_viana.csv"
+    filename = "Coura-lrm.tif"
+    anotacoes = "anotacoes_coura.csv"
     step = 100
 
     geoRef = rasterio.open(filename)
@@ -69,13 +69,13 @@ def get_labels():
                     aux.append(m)
             if len(aux) > 0:
                 img_cropped = image.crop((xmin, ymin, xmax, ymax))
-                img_cropped.save("crops/" + "Viana_" + str(row) + "_" + str(column) + ".tif")
-                with open("crops/" + "Viana_" + str(row) + "_" + str(column) + ".txt", "a") as f:
+                img_cropped.save("crops/" + "Coura_" + str(row) + "_" + str(column) + ".tif")
+                with open("crops/" + "Coura_" + str(row) + "_" + str(column) + ".txt", "a") as f:
                     index = aux[0][2]
                     s = "0 "
                     for a in aux:
                         if a[2] == index:
-                            s = s + str(a[0] - xmin) + " " + str(a[1] - ymin) + " "
+                            s = s + str((a[0] - xmin) / dim) + " " + str((a[1] - ymin) / dim) + " "
                         else:
                             print(str(row) + str(column))
                             s = s + "\n"

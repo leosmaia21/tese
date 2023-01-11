@@ -21,8 +21,6 @@ def map(value, min1, max1, min2, max2):
 
 class Mamoa:
     def __init__(self, pX, pY, prob, bb):
-        # bb gives the  pixels(x1, y1, x2, y2) -> top left and botton right points
-        # bb_GeoCoord gives the coordinates botton left and top right_
         self.pX = pX
         self.pY = pY
         self.prob = prob
@@ -164,8 +162,6 @@ def resultYolo(img_cropped, model, device):
 
 
 def detectYolov7(filename, step=20, offset=20):
-    """Function to run yolov7, arguements are the filename, step and offset, step(default=20) is the percentage for the
-    image slide, and the offset(default=20) is the number of pixeis i which duplicates will be removed"""
 
     print("Running YOLOv7")
     mamoas = []
@@ -177,7 +173,6 @@ def detectYolov7(filename, step=20, offset=20):
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     model = attempt_load(weights, map_location=device)
     model = model.eval()
-
     dim = 640
     slide = round(dim * step / 100)
 
@@ -190,9 +185,9 @@ def detectYolov7(filename, step=20, offset=20):
     Image.MAX_IMAGE_PIXELS = None
     image = Image.open(filename).convert('RGB')
     width_im, height_im = image.size
-    xy = (0, 22705, 2000, 24165)
+    xy = (523, 2140, 5269, 5363)
     image = image.crop(xy)
-    image.save("teste1.tif")
+    image.save("teste2.tif")
 
     x1 = map(xy[0], 0 , width_im, tifGeoCoord[0], tifGeoCoord[2])
     y1 = map(height_im - xy[3], 0 , height_im, tifGeoCoord[1], tifGeoCoord[3])
@@ -228,19 +223,20 @@ def detectYolov7(filename, step=20, offset=20):
     mamoas = removeDuplicates(mamoas, offset)
 
 
-    #validation with points cloud
+    # validation with points cloud
     for mamoa in mamoas:
-        mamoa.convert2GeoCoord(tifGeoCoord, width_im, height_im)
-        mamoa.afterValidation = pointCloud(validationModel, pointClouds, mamoa.bb_GeoCoord)
+         mamoa.convert2GeoCoord(tifGeoCoord, width_im, height_im)
+         print(mamoa.bb_GeoCoord)
+    #     mamoa.afterValidation = pointCloud(validationModel, pointClouds, mamoa.bb_GeoCoord)
 
-    image = cv2.imread("teste1.tif")	#type: ignore
-    print("tamanho", len(mamoas))
-    for m in mamoas:
-        image = cv2.rectangle(image, (m.bb[0], m.bb[1]), (m.bb[2], m.bb[3]), (255, 0, 0), 4)
-        if m.afterValidation == True:
-            image = cv2.rectangle(image, (m.bb[0], m.bb[1]), (m.bb[2], m.bb[3]), (0, 0, 255), 2)
+    # image = cv2.imread("teste2_e6e.tif")	#type: ignore
+    # print("tamanho", len(mamoas))
+    # for m in mamoas:
+    #     image = cv2.rectangle(image, (m.bb[0], m.bb[1]), (m.bb[2], m.bb[3]), (255, 0, 0), 4)
+    #     if m.afterValidation == True:
+    #         image = cv2.rectangle(image, (m.bb[0], m.bb[1]), (m.bb[2], m.bb[3]), (0, 0, 255), 2)
 
-    cv2.imwrite("teste1.tif", image)
+    # cv2.imwrite("teste2_e6e.tif", image)
 
     # img = cv2.imread("cropped.tif")
     # for m in mamoas:

@@ -1,9 +1,8 @@
 from decimal import Decimal
 import pandas as pd
-import csv
 from PIL import Image
 import rasterio
-
+import cv2
 
 
 
@@ -32,12 +31,6 @@ def get_labels():
 
     xmin, ymin, xmax, ymax = 0, 0, dim, dim
 
-    # x1 = map(xy[0], 0 , width_im, tifGeoCoord[0], tifGeoCoord[2])
-    # y1 = map(height_im - xy[3], 0 , height_im, tifGeoCoord[1], tifGeoCoord[3])
-    # x2 = map(xy[2], 0 , width_im, tifGeoCoord[0], tifGeoCoord[2])
-    # y2 = map(height_im - xy[1], 0 , height_im, tifGeoCoord[1], tifGeoCoord[3])
-
-
     rows = round((height_im / dim) / (step / 100))
     columns = round((width_im / dim) / (step / 100))
 
@@ -63,25 +56,29 @@ def get_labels():
     for row in range(round(rows)):
         for column in range(round(columns)):
             aux = []
-            flag = False
             for m in final:
                 if xmin <= m[0] and xmax >= m[0] and ymin <= m[1] and ymax >= m[1]:
                     aux.append(m)
             if len(aux) > 0:
                 img_cropped = image.crop((xmin, ymin, xmax, ymax))
-                img_cropped.save("crops/" + "Coura_" + str(row) + "_" + str(column) + ".tif")
-                with open("crops/" + "Coura_" + str(row) + "_" + str(column) + ".txt", "a") as f:
-                    index = aux[0][2]
-                    s = "0 "
-                    for a in aux:
-                        if a[2] == index:
-                            s = s + str((a[0] - xmin) / dim) + " " + str((a[1] - ymin) / dim) + " "
-                        else:
-                            print(str(row) + str(column))
-                            s = s + "\n"
-                            index = a[2]
-                            s = s + "0 "
-                    f.write(s)
+                img_cropped.save("teste/" + "Coura_" + str(row) + "_" + str(column) + ".tif")
+                img_cropped = cv2.imread("teste/" + "Coura_" + str(row) + "_" + str(column) + ".tif")	#type: ignore
+                # for a in aux:
+                #     print(a)
+                #     img_cropped = cv2.circle(img_cropped, (int(a[0] - xmin), int(a[1] - ymin)), radius=0, color=(0, 0, 255), thickness=-1)
+                # cv2.imwrite("teste/" + "Coura_" + str(row) + "_" + str(column) + ".tif", img_cropped)
+                # with open("crops/" + "Coura_" + str(row) + "_" + str(column) + ".txt", "a") as f:
+                    # index = aux[0][2]
+                    # s = "0 "
+                    # for a in aux:
+                    #     if a[2] == index:
+                    #         s = s + str((a[0] - xmin) / dim) + " " + str((a[1] - ymin) / dim) + " "
+                    #     else:
+                    #         print(str(row) + str(column))
+                    #         s = s + "\n"
+                    #         index = a[2]
+                    #         s = s + "0 "
+                    # f.write(s)
             xmin += slide
             xmax += slide
         xmin = 0

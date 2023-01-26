@@ -605,7 +605,7 @@ def box_diou(box1, box2, eps: float = 1e-7):
     return iou - (centers_distance_squared / diagonal_distance_squared)
 
 
-def non_max_suppression(prediction, conf_thres=0.25, iou_thres=0.45, classes=None, agnostic=False, multi_label=False,
+def non_max_suppression(prediction, conf_thres=0.05, iou_thres=0.45, classes=None, agnostic=False, multi_label=False,
                         labels=()):
     """Runs Non-Maximum Suppression (NMS) on inference results
 

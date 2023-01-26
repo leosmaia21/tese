@@ -1,5 +1,6 @@
 from PIL import Image
 import os.path
+from click import group
 import torch
 import cv2
 import numpy as np
@@ -13,7 +14,28 @@ from yolov7.utils.datasets import letterbox
 from yolov7.utils.general import non_max_suppression, scale_coords, xyxy2xywh
 from jakteristics import las_utils, compute_features, FEATURE_NAMES
 import pickle
+import csv
 
+
+def convert_polygon_to_bb(file: str):
+    mamoas = []
+    final = []
+
+    with open(file, 'r') as f:
+        csvreader = csv.reader(f)
+        for row in csvreader:
+            mamoas.append(row[0].split())
+
+    for m in mamoas:
+        aux =  []
+        aux.append(min(float(m[i]) for i in range(0, len(m), 2)))
+        aux.append(min(float(m[i]) for i in range(1, len(m), 2)))
+        aux.append(max(float(m[i]) for i in range(0, len(m), 2)))
+        aux.append(max(float(m[i]) for i in range(1, len(m), 2)))
+        aux.append(((aux[0] + aux[2]) / 2))
+        aux.append(((aux[1] + aux[3]) / 2))
+        final.append(aux.copy())
+    return final 
 
 def map(value, min1, max1, min2, max2):
 	return (((value - min1) * (max2 - min2)) / (max1 - min1)) + min2
@@ -29,14 +51,13 @@ class Mamoa:
         self.afterValidation = False
 
     def convert2GeoCoord(self, tifGeoCoord, width_im, height_im):
-        self.bb_GeoCoord.append(int(map(self.bb[0], 0, width_im, tifGeoCoord[0], tifGeoCoord[2])))
-        self.bb_GeoCoord.append(int(map(height_im - self.bb[3], 0, height_im, tifGeoCoord[1], tifGeoCoord[3])))
-        self.bb_GeoCoord.append(int(map(self.bb[2], 0, width_im, tifGeoCoord[0], tifGeoCoord[2])))
-        self.bb_GeoCoord.append(int(map(height_im - self.bb[1], 0, height_im, tifGeoCoord[1], tifGeoCoord[3])))
+        self.bb_GeoCoord.append(round(map(self.bb[0], 0, width_im, tifGeoCoord[0], tifGeoCoord[2])))
+        self.bb_GeoCoord.append(round(map(height_im - self.bb[3], 0, height_im, tifGeoCoord[1], tifGeoCoord[3])))
+        self.bb_GeoCoord.append(round(map(self.bb[2], 0, width_im, tifGeoCoord[0], tifGeoCoord[2])))
+        self.bb_GeoCoord.append(round(map(height_im - self.bb[1], 0, height_im, tifGeoCoord[1], tifGeoCoord[3])))
 
         return self.bb_GeoCoord
     
-
 
 def removeDuplicates(mamoas, offset):
     newList = []
@@ -57,7 +78,6 @@ def removeDuplicates(mamoas, offset):
 
 # Validates a detection using the Point Clouds
 def pointCloud(validationModel, pointClouds, bb):
-
     if os.path.isfile("tmp.las"):
         os.remove("tmp.las")
 
@@ -86,8 +106,7 @@ def pointCloud(validationModel, pointClouds, bb):
                     roi = las.points[mask]
                     w.append_points(roi)	#type: ignore
                     count += 1
-                    print(count)
-
+    print("numeros de .las usados:", count)
 	
 	# If temporary las was populated with points
     if count > 0:
@@ -117,7 +136,9 @@ def pointCloud(validationModel, pointClouds, bb):
             os.remove("tmp.las")
 			
 			# 1 is validated, -1 is not validated
-            if validationModel.predict([X]) == -1:
+            result = validationModel.predict([X]) 
+            print("result: ", result)
+            if result == -1:
                 print("false")
                 return False
             else:
@@ -165,9 +186,9 @@ def detectYolov7(filename, step=20, offset=20):
 
     print("Running YOLOv7")
     mamoas = []
-    weights = 'best.pt'
+    weights = 'teste_canedo.pt'
     validationModel = pickle.load(open("pointCloud.sav", "rb"))
-    pointClouds = "../las"
+    pointClouds = "../LAS/"
 
     #load model
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -185,18 +206,22 @@ def detectYolov7(filename, step=20, offset=20):
     Image.MAX_IMAGE_PIXELS = None
     image = Image.open(filename).convert('RGB')
     width_im, height_im = image.size
-    xy = (523, 2140, 5269, 5363)
+    # xy = (523, 2140, 7500, 5363)
+    xy = (0, 43000, 1200, 43700)
+    # xy = (4650, 3210, 6000, 4260)
+    # xy = (0, 22622, 2660, 24700)
+    
     image = image.crop(xy)
-    image.save("teste2.tif")
+    image.save("teste_ground.tif")
 
     x1 = map(xy[0], 0 , width_im, tifGeoCoord[0], tifGeoCoord[2])
     y1 = map(height_im - xy[3], 0 , height_im, tifGeoCoord[1], tifGeoCoord[3])
     x2 = map(xy[2], 0 , width_im, tifGeoCoord[0], tifGeoCoord[2])
     y2 = map(height_im - xy[1], 0 , height_im, tifGeoCoord[1], tifGeoCoord[3])
     tifGeoCoord = (x1, y1, x2, y2) 
-    print(tifGeoCoord)
     width_im, height_im = image.size
-    # print("cordenadas:", int(x1),int(y1), int(x2),int(y2))
+
+
 
     rows = round((height_im / dim) / (step / 100))
     columns = round((width_im / dim) / (step / 100))
@@ -227,14 +252,25 @@ def detectYolov7(filename, step=20, offset=20):
     for mamoa in mamoas:
          mamoa.convert2GeoCoord(tifGeoCoord, width_im, height_im)
          print(mamoa.bb_GeoCoord)
-    #     mamoa.afterValidation = pointCloud(validationModel, pointClouds, mamoa.bb_GeoCoord)
+         # mamoa.afterValidation = pointCloud(validationModel, pointClouds, mamoa.bb_GeoCoord)
 
-    # image = cv2.imread("teste2_e6e.tif")	#type: ignore
-    # print("tamanho", len(mamoas))
-    # for m in mamoas:
-    #     image = cv2.rectangle(image, (m.bb[0], m.bb[1]), (m.bb[2], m.bb[3]), (255, 0, 0), 4)
-    #     if m.afterValidation == True:
-    #         image = cv2.rectangle(image, (m.bb[0], m.bb[1]), (m.bb[2], m.bb[3]), (0, 0, 255), 2)
+    image = cv2.imread("teste_ground.tif")	#type: ignore
+    print("tamanho", len(mamoas))
+    for m in mamoas:
+        image = cv2.rectangle(image, (m.bb[0], m.bb[1]), (m.bb[2], m.bb[3]), (255, 0, 0), 2)	#type: ignore
+        if m.afterValidation == True:
+            image = cv2.rectangle(image, (m.bb[0], m.bb[1]), (m.bb[2], m.bb[3]), (0, 0, 255), 3)	#type: ignore
+
+    ground_truth = convert_polygon_to_bb("anotacoes_arcos.csv")
+    cv2.imwrite("teste_ground.tif", image)
+
+    # with open("results.csv", "a") as f:
+    #     writer = csv.writer(f)
+    #     for mamoa in mamoas:
+    #         aux = mamoa.bb_GeoCoord
+    #         aux.append(mamoa.afterValidation)
+    #         writer.writerow(aux)
+
 
     # cv2.imwrite("teste2_e6e.tif", image)
 

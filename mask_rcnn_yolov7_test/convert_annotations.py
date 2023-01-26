@@ -5,15 +5,13 @@ import rasterio
 import cv2
 
 
-
 def map(value, min1, max1, min2, max2):
-	return (((value - min1) * (max2 - min2)) / (max1 - min1)) + min2
-
+    return (((value - min1) * (max2 - min2)) / (max1 - min1)) + min2
 
 
 def get_labels():
-    filename = "Coura-lrm.tif"
-    anotacoes = "anotacoes_coura.csv"
+    filename = "../images/Arcos-lrm.tif"
+    anotacoes = "anotacoes_castros.csv"
     step = 100
 
     geoRef = rasterio.open(filename)
@@ -23,7 +21,6 @@ def get_labels():
     Image.MAX_IMAGE_PIXELS = None
     image = Image.open(filename).convert('RGB')
     width_im, height_im = image.size
-
 
 
     dim = 640
@@ -53,6 +50,7 @@ def get_labels():
             final.append(d)
         i += 1
     
+    print(final)
     for row in range(round(rows)):
         for column in range(round(columns)):
             aux = []
@@ -61,24 +59,24 @@ def get_labels():
                     aux.append(m)
             if len(aux) > 0:
                 img_cropped = image.crop((xmin, ymin, xmax, ymax))
-                img_cropped.save("teste/" + "Coura_" + str(row) + "_" + str(column) + ".tif")
-                img_cropped = cv2.imread("teste/" + "Coura_" + str(row) + "_" + str(column) + ".tif")	#type: ignore
-                # for a in aux:
-                #     print(a)
-                #     img_cropped = cv2.circle(img_cropped, (int(a[0] - xmin), int(a[1] - ymin)), radius=0, color=(0, 0, 255), thickness=-1)
-                # cv2.imwrite("teste/" + "Coura_" + str(row) + "_" + str(column) + ".tif", img_cropped)
-                # with open("crops/" + "Coura_" + str(row) + "_" + str(column) + ".txt", "a") as f:
-                    # index = aux[0][2]
-                    # s = "0 "
-                    # for a in aux:
-                    #     if a[2] == index:
-                    #         s = s + str((a[0] - xmin) / dim) + " " + str((a[1] - ymin) / dim) + " "
-                    #     else:
-                    #         print(str(row) + str(column))
-                    #         s = s + "\n"
-                    #         index = a[2]
-                    #         s = s + "0 "
-                    # f.write(s)
+                img_cropped.save("teste_castros/" + "Arcos_" + str(row) + "_" + str(column) + ".tif")
+                img_cropped = cv2.imread("teste_castros/" + "Arcos_" + str(row) + "_" + str(column) + ".tif")	#type: ignore
+                for a in aux:
+                    img_cropped = cv2.circle(img_cropped, (int(a[0] - xmin), int(a[1] - ymin)), radius=0, color=(0, 0, 255), thickness=3)
+                cv2.imwrite("teste_castros/" + "Arcos_" + str(row) + "_" + str(column) + ".tif", img_cropped)
+                # aqui
+                # with open("crops_/" + "Coura_" + str(row) + "_" + str(column) + ".txt", "a") as f:
+                #     index = aux[0][2]
+                #     s = "0 "
+                #     for a in aux:
+                #         if a[2] == index:
+                #             s = s + str((a[0] - xmin) / dim) + " " + str((a[1] - ymin) / dim) + " "
+                #         else:
+                #             print(str(row) + str(column))
+                #             s = s + "\n"
+                #             index = a[2]
+                #             s = s + "0 "
+                #     f.write(s)
             xmin += slide
             xmax += slide
         xmin = 0

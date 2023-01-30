@@ -1,3 +1,0 @@
-/home/leonardo/Desktop/tese_odyssey/LRMs/annotations/Viana-lrm.tif
-/home/leonardo/Desktop/tese_odyssey/LRMs/annotations/Arcos-lrm.tif
-/home/leonardo/Desktop/tese_odyssey/LRMs/annotations/Coura-lrm.tif

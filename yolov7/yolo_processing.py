@@ -52,9 +52,9 @@ class Mamoa:
 
     def convert2GeoCoord(self, tifGeoCoord, width_im, height_im):
         self.bb_GeoCoord.append(round(map(self.bb[0], 0, width_im, tifGeoCoord[0], tifGeoCoord[2])))
-        self.bb_GeoCoord.append(round(map(height_im - self.bb[3], 0, height_im, tifGeoCoord[1], tifGeoCoord[3])))
+        self.bb_GeoCoord.append(round(map(self.bb[1], 0, height_im, tifGeoCoord[3], tifGeoCoord[1])))
         self.bb_GeoCoord.append(round(map(self.bb[2], 0, width_im, tifGeoCoord[0], tifGeoCoord[2])))
-        self.bb_GeoCoord.append(round(map(height_im - self.bb[1], 0, height_im, tifGeoCoord[1], tifGeoCoord[3])))
+        self.bb_GeoCoord.append(round(map(self.bb[3], 0, height_im, tifGeoCoord[3], tifGeoCoord[1])))
 
         return self.bb_GeoCoord
     
@@ -186,7 +186,7 @@ def detectYolov7(filename, step=20, offset=20):
 
     print("Running YOLOv7")
     mamoas = []
-    weights = 'teste_canedo.pt'
+    weights = 'best_not_aug.pt'
     validationModel = pickle.load(open("pointCloud.sav", "rb"))
     pointClouds = "../LAS/"
 
@@ -207,9 +207,9 @@ def detectYolov7(filename, step=20, offset=20):
     image = Image.open(filename).convert('RGB')
     width_im, height_im = image.size
     # xy = (523, 2140, 7500, 5363)
-    xy = (0, 43000, 1200, 43700)
+    # xy = (0, 43000, 1200, 43700)
     # xy = (4650, 3210, 6000, 4260)
-    # xy = (0, 22622, 2660, 24700)
+    xy = (0, 22622, 2660, 24700)
     
     image = image.crop(xy)
     image.save("teste_ground.tif")
@@ -251,20 +251,34 @@ def detectYolov7(filename, step=20, offset=20):
     # validation with points cloud
     for mamoa in mamoas:
          mamoa.convert2GeoCoord(tifGeoCoord, width_im, height_im)
-         print(mamoa.bb_GeoCoord)
          # mamoa.afterValidation = pointCloud(validationModel, pointClouds, mamoa.bb_GeoCoord)
 
     image = cv2.imread("teste_ground.tif")	#type: ignore
     print("tamanho", len(mamoas))
     for m in mamoas:
         image = cv2.rectangle(image, (m.bb[0], m.bb[1]), (m.bb[2], m.bb[3]), (255, 0, 0), 2)	#type: ignore
+        print(m.bb_GeoCoord)
         if m.afterValidation == True:
             image = cv2.rectangle(image, (m.bb[0], m.bb[1]), (m.bb[2], m.bb[3]), (0, 0, 255), 3)	#type: ignore
 
-    ground_truth = convert_polygon_to_bb("anotacoes_arcos.csv")
+    # ground_truth = convert_polygon_to_bb("anotacoes_arcos.csv")
+    # with open("results/not_aug/results_Arcos.csv", "r") as f:
+    #     rows = csv.reader(f)
+    for g in mamoas:
+        xmin = map(int(g.bb_GeoCoord[0]), tifGeoCoord[0], tifGeoCoord[2], 0, width_im)
+        ymin = map(int(g.bb_GeoCoord[1]), tifGeoCoord[1], tifGeoCoord[3], height_im, 0)
+        xmax = map(int(g.bb_GeoCoord[2]), tifGeoCoord[0], tifGeoCoord[2], 0, width_im)
+        ymax = map(int(g.bb_GeoCoord[3]), tifGeoCoord[1], tifGeoCoord[3], height_im, 0)
+        cv2.rectangle(image, (int(xmin), int(ymin)), (int(xmax), int(ymax)), (0, 0, 255), 2)	#type: ignore
+    # for g in ground_truth:
+    #     xmin = map(g[0], tifGeoCoord[0], tifGeoCoord[2], 0, width_im)
+    #     ymin = map(g[1], tifGeoCoord[1], tifGeoCoord[3], height_im, 0)
+    #     xmax = map(g[2], tifGeoCoord[0], tifGeoCoord[2], 0, width_im)
+    #     ymax = map(g[3], tifGeoCoord[1], tifGeoCoord[3], height_im, 0)
+    #     cv2.rectangle(image, (int(xmin), int(ymin)), (int(xmax), int(ymax)), (0, 255, 0), 2)	#type: ignore
     cv2.imwrite("teste_ground.tif", image)
-
-    # with open("results.csv", "a") as f:
+    
+    # with open("results_" + filename.split(".")[0] + ".csv", "a") as f:
     #     writer = csv.writer(f)
     #     for mamoa in mamoas:
     #         aux = mamoa.bb_GeoCoord

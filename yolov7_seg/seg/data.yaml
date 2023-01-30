@@ -1,0 +1,7 @@
+train: /content/drive/MyDrive/yolov7_seg/crops/train/images
+val: /content/drive/MyDrive/yolov7_seg/crops/val/images
+
+nc: 1
+names: ['mamoa']
+
+

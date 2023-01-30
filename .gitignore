@@ -1,9 +1,12 @@
 canedo/.git/objects/pack/pack-47bc71a0df0323f07c09f1f5d4fc730fd61258a3.pack
+LRMs/dataset.zip
 LRMs/annotations/Coura-lrm.tif
 LRMs/annotations/Arcos-lrm.tif
+LRMs/annotations/PNPG-lrm.tif
 LRMs/annotations/Viana-lrm.tif
 LRMs/points/+01000_259000.las
-processing_mamoas/Mask_RCNN/.git/objects/pack/pack-54efba41e45222f206af92adc9e79952e9aac20d.pack
-processing_mamoas/Mask_RCNN/mask_rcnn_coco.h5
 yolov7/best_e6e.pt
 yolov7/Arcos-lrm.tif
+yolov7/results/bb_all.png
+yolov7_seg/Arcos-lrm.tif
+LRMs/*

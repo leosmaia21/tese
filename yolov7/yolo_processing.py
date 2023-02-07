@@ -1,5 +1,6 @@
 from PIL import Image
 import os.path
+import sys
 from click import group
 import torch
 import cv2
@@ -15,7 +16,10 @@ from yolov7.utils.general import non_max_suppression, scale_coords, xyxy2xywh
 from jakteristics import las_utils, compute_features, FEATURE_NAMES
 import pickle
 import csv
+from shapely.geometry import Point, Polygon
+from shapely.wkt import loads
 
+csv.field_size_limit(sys.maxsize)
 
 def convert_polygon_to_bb(file: str):
     mamoas = []
@@ -40,15 +44,15 @@ def convert_polygon_to_bb(file: str):
 def map(value, min1, max1, min2, max2):
 	return (((value - min1) * (max2 - min2)) / (max1 - min1)) + min2
 
-
 class Mamoa:
+
     def __init__(self, pX, pY, prob, bb):
         self.pX = pX
         self.pY = pY
         self.prob = prob
         self.bb = bb
         self.bb_GeoCoord = []
-        self.afterValidation = False
+        self.validation = False
 
     def convert2GeoCoord(self, tifGeoCoord, width_im, height_im):
         self.bb_GeoCoord.append(round(map(self.bb[0], 0, width_im, tifGeoCoord[0], tifGeoCoord[2])))
@@ -77,78 +81,71 @@ def removeDuplicates(mamoas, offset):
 
 
 # Validates a detection using the Point Clouds
-def pointCloud(validationModel, pointClouds, bb):
-    if os.path.isfile("tmp.las"):
-        os.remove("tmp.las")
-
-    tmp = ""
+def pointCloud(spindex, validationModel, pointClouds, bb):
+    tmp = ''
     for cloud in os.listdir(pointClouds):
-        tmp = pointClouds + "/" + cloud
+        tmp = pointClouds + '/' + cloud
         break
 
-	# Creates empty .las file to later populate it with points
+
+    # Creates empty .las file to later populate it with points
     with laspy.open(tmp) as f:
-        w = laspy.open("tmp.las", mode="w", header = f.header)
+        w = laspy.open('tmp.las', mode='w', header = f.header)
         w.close()
 
     count = 0
-	# Iterates over the point clouds
-    with laspy.open("tmp.las", mode = "a") as w:
-        for cloud in os.listdir(pointClouds):
-            with laspy.open(pointClouds + "/" + cloud) as f:
-				# Checks if there is an overlap with the cropped image and the point cloud
-                if f.header.x_min <= bb[0] and f.header.y_min <= bb[1] and  f.header.x_max >= bb[2] and f.header.y_max >= bb[3]:
-                # if bb[0] <= f.header.x_max and bb[1] >= f.header.x_min and bb[2] <= f.header.y_max and bb[3] >= f.header.y_min:
-                    # Appends the points of the overlapping region to the previously created .las file
-                    las = f.read()	#type: ignore
-                    x, y = las.points.x.copy(), las.points.y.copy()
-                    mask = (x >= bb[0]) & (x <= bb[2]) & (y >= bb[1]) & (y <= bb[3])
-                    roi = las.points[mask]
-                    w.append_points(roi)	#type: ignore
-                    count += 1
-    print("numeros de .las usados:", count)
-	
-	# If temporary las was populated with points
-    if count > 0:
-        xyz = las_utils.read_las_xyz("tmp.las")
+    # Checks if there is an overlap with the cropped image and the point cloud
+    matches = spindex.intersect((bb[0], bb[2], bb[1], bb[3]))
 
-		# Compute 3D features
-        features = compute_features(xyz, search_radius=3)	#type: ignore
+    # Iterates over the matched point clouds
+    with laspy.open('tmp.las', mode = 'a') as w:
+        for match in matches:
+            with laspy.open(match) as f:
+                # Appends the points of the overlapping region to the previously created .las file
+                las = f.read()          
+                x, y = las.points[las.classification == 2].x.copy(), las.points[las.classification == 2].y.copy()
+                mask = (x >= bb[0]) & (x <= bb[2]) & (y >= bb[1]) & (y <= bb[3])
+                if True in mask:
+                    roi = las.points[las.classification == 2][mask]
+                    w.append_points(roi)
+                    count += 1
+        
+    if count > 0:
+        xyz = las_utils.read_las_xyz('tmp.las')
+        #FEATURE_NAMES = ['planarity', 'linearity', 'surface_variation', 'sphericity', 'verticality']
+        features = compute_features(xyz, search_radius=3)#, feature_names = ['planarity', 'linearity', 'surface_variation', 'sphericity', 'verticality'])
+        
         if np.isnan(features).any() == False:
 
             stats = {}
             for i in FEATURE_NAMES:
                 stats[i] = []
- 
+            
             for feature in features:
                 for i in range(len(FEATURE_NAMES)):
                     stats[FEATURE_NAMES[i]].append(feature[i])
 
-            # Each point contributes to 14 features which is too heavy, therefore calculate
-            # the mean and standard deviation of of every feature for each point
             X = []
-            for i in FEATURE_NAMES:		
+            for i in FEATURE_NAMES:        
                 mean = np.mean(stats[i])
                 stdev = np.std(stats[i])
                 X += [mean,stdev]
+                #print(i + ': ' + str(mean) + ' - ' + str(stdev))
 
-			# Removes temporary las
-            os.remove("tmp.las")
-			
-			# 1 is validated, -1 is not validated
-            result = validationModel.predict([X]) 
-            print("result: ", result)
-            if result == -1:
-                print("false")
+
+
+            #X += list(np.max(xyz, axis=0)-np.min(xyz, axis=0))
+            #X += [np.mean(xyz, axis=0)[2], np.std(xyz, axis=0)[2]]
+            
+            
+            os.remove('tmp.las')
+            if validationModel.predict([X]) == -1:
                 return False
             else:
-                print("true")
                 return True
 
-	# Return -1 if there are no Point Clouds in this region
-    print("erro")
+    
     return -1
-
 def resultYolo(img_cropped, model, device):
     x = []
     y = []
@@ -181,6 +178,21 @@ def resultYolo(img_cropped, model, device):
                 bb.append(xyxy)
     return len(x), x, y, prob, bb
 
+def LBRroi(polygons, bb):
+    p = Polygon([(bb[0], bb[2]), (bb[0], bb[3]), (bb[1], bb[3]), (bb[1], bb[2])])
+    intersection = []
+    for polygon in polygons:
+        if polygon.intersects(p):
+            intersection.append(polygon.intersection(p))
+    return intersection
+
+def LBR(roi, bb):
+    b = [bb[0], bb[2], bb[1], bb[3]]
+    p = Polygon([(b[0], b[2]), (b[0], b[3]), (b[1], b[3]), (b[1], b[2])])
+    for polygon in roi:
+        if polygon.intersects(p):
+            return True
+    return False
 
 def detectYolov7(filename, step=20, offset=20):
 
@@ -189,6 +201,21 @@ def detectYolov7(filename, step=20, offset=20):
     weights = 'best_not_aug.pt'
     validationModel = pickle.load(open("pointCloud.sav", "rb"))
     pointClouds = "../LAS/"
+    polygonsCsv = "Segmentation.csv"
+
+
+    spindex = pyqtree.Index(bbox=(0, 0, 100, 100))
+    for cloud in os.listdir(pointClouds):
+        with laspy.open(pointClouds + '/' + cloud) as f:
+            spindex.insert(pointClouds + '/' + cloud, (f.header.x_min, f.header.y_min, f.header.x_max, f.header.y_max))
+
+
+    polygons = []
+    with open(polygonsCsv) as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            p = loads(row['WKT'])
+            polygons.append(p)
 
     #load model
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -229,6 +256,14 @@ def detectYolov7(filename, step=20, offset=20):
     print("Columns:", columns, " Rows:", rows)
     for row in range(round(rows)):
         for column in range(round(columns)):
+            xMinGeo = map(xmin, 0 , width_im, tifGeoCoord[0], tifGeoCoord[2])
+            yMinGeo = map(ymin, height_im , 0, tifGeoCoord[1], tifGeoCoord[3])
+            xMaxGeo = map(xmax, 0 , width_im, tifGeoCoord[0], tifGeoCoord[2])
+            yMaxGeo = map(ymax, height_im , 0, tifGeoCoord[1], tifGeoCoord[3])
+
+            roi = LBRroi(polygons, (xMinGeo, xMaxGeo, yMinGeo, yMaxGeo))
+            if len(roi) == 0:
+                continue
             img_cropped = image.crop((xmin, ymin, xmax, ymax))
             n, x, y, prob, bb = resultYolo(img_cropped, model, device)
             for i in range(n):
@@ -237,7 +272,12 @@ def detectYolov7(filename, step=20, offset=20):
                 bb_aux.append(int(bb[i][1]) + ymin)
                 bb_aux.append(int(bb[i][2]) + xmin)
                 bb_aux.append(int(bb[i][3]) + ymin)
-                mamoas.append(Mamoa(xmin + x[i], ymin + y[i], prob[i], bb_aux.copy()))
+                m = Mamoa(xmin + x[i], ymin + y[i], prob[i], bb_aux.copy())
+                m.convert2GeoCoord(tifGeoCoord, width_im, height_im)
+                lbr = LBR(roi, m.bb_GeoCoord)
+                if LBR(roi, m.bb_GeoCoord):
+                    # m.validation = pointCloud(validationModel, pointClouds, m.bb_GeoCoord)
+                    mamoas.append(m)
             xmin += slide
             xmax += slide
         xmin = 0
@@ -246,19 +286,15 @@ def detectYolov7(filename, step=20, offset=20):
         ymax += slide
 
     mamoas = removeDuplicates(mamoas, offset)
-
-
-    # validation with points cloud
     for mamoa in mamoas:
-         mamoa.convert2GeoCoord(tifGeoCoord, width_im, height_im)
-         # mamoa.afterValidation = pointCloud(validationModel, pointClouds, mamoa.bb_GeoCoord)
+        mamoa.validation = pointCloud(validationModel, pointClouds, mamoa.bb_GeoCoord)
 
     image = cv2.imread("teste_ground.tif")	#type: ignore
     print("tamanho", len(mamoas))
     for m in mamoas:
         image = cv2.rectangle(image, (m.bb[0], m.bb[1]), (m.bb[2], m.bb[3]), (255, 0, 0), 2)	#type: ignore
         print(m.bb_GeoCoord)
-        if m.afterValidation == True:
+        if m.validation == True:
             image = cv2.rectangle(image, (m.bb[0], m.bb[1]), (m.bb[2], m.bb[3]), (0, 0, 255), 3)	#type: ignore
 
     # ground_truth = convert_polygon_to_bb("anotacoes_arcos.csv")
@@ -270,12 +306,22 @@ def detectYolov7(filename, step=20, offset=20):
         xmax = map(int(g.bb_GeoCoord[2]), tifGeoCoord[0], tifGeoCoord[2], 0, width_im)
         ymax = map(int(g.bb_GeoCoord[3]), tifGeoCoord[1], tifGeoCoord[3], height_im, 0)
         cv2.rectangle(image, (int(xmin), int(ymin)), (int(xmax), int(ymax)), (0, 0, 255), 2)	#type: ignore
-    # for g in ground_truth:
-    #     xmin = map(g[0], tifGeoCoord[0], tifGeoCoord[2], 0, width_im)
-    #     ymin = map(g[1], tifGeoCoord[1], tifGeoCoord[3], height_im, 0)
-    #     xmax = map(g[2], tifGeoCoord[0], tifGeoCoord[2], 0, width_im)
-    #     ymax = map(g[3], tifGeoCoord[1], tifGeoCoord[3], height_im, 0)
-    #     cv2.rectangle(image, (int(xmin), int(ymin)), (int(xmax), int(ymax)), (0, 255, 0), 2)	#type: ignore
+
+
+    with open("anotacoes_arcos.csv") as c:
+        rows = csv.reader(c)
+        for row in rows:
+            row = row[0].split()
+            xmin = min([row[i] for i in range(0, len(row), 2)])
+            ymin = min([row[i] for i in range(1, len(row), 2)])
+            xmax = max([row[i] for i in range(0, len(row), 2)])
+            ymax = max([row[i] for i in range(1, len(row), 2)])
+
+            xmin = map(float(xmin), tifGeoCoord[0], tifGeoCoord[2], 0, width_im)
+            ymin = map(float(ymin), tifGeoCoord[1], tifGeoCoord[3], height_im, 0)
+            xmax = map(float(xmax), tifGeoCoord[0], tifGeoCoord[2], 0, width_im)
+            ymax = map(float(ymax), tifGeoCoord[1], tifGeoCoord[3], height_im, 0)
+            cv2.rectangle(image, (int(xmin), int(ymin)), (int(xmax), int(ymax)), (0, 255, 0), 2)	#type: ignore
     cv2.imwrite("teste_ground.tif", image)
     
     # with open("results_" + filename.split(".")[0] + ".csv", "a") as f:

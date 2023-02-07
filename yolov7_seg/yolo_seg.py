@@ -5,19 +5,47 @@ import os
 import torch
 import pickle
 import rasterio
-
-
+import math
 from models.experimental import attempt_load
 from utils.augmentations import letterbox
-from models.common import DetectMultiBackend
-from utils.dataloaders import IMG_FORMATS, VID_FORMATS, LoadImages, LoadStreams
-from utils.general import (LOGGER, Profile, check_file, check_img_size, check_imshow, check_requirements, colorstr, cv2,
-                           increment_path, non_max_suppression, print_args, scale_coords, strip_optimizer, xyxy2xywh)
-from utils.plots import Annotator, colors, save_one_box
-from utils.torch_utils import select_device, smart_inference_mode
-from utils.segment.general import process_mask, scale_masks
-from utils.segment.plots import plot_masks
+from utils.general import non_max_suppression
+from utils.segment.general import process_mask
 
+
+class Mamoa:
+    def __init__(self, pX, pY, bb, seg):
+        self.pX = pX
+        self.pY = pY
+        self.prob = 0
+        self.bb = bb
+        self.bb_GeoCoord = []
+        self.afterValidation = False
+        self.seg = seg
+
+    def convert2GeoCoord(self, tifGeoCoord, width_im, height_im):
+        self.bb_GeoCoord.append(round(map(self.bb[0], 0, width_im, tifGeoCoord[0], tifGeoCoord[2])))
+        self.bb_GeoCoord.append(round(map(self.bb[1], 0, height_im, tifGeoCoord[3], tifGeoCoord[1])))
+        self.bb_GeoCoord.append(round(map(self.bb[2], 0, width_im, tifGeoCoord[0], tifGeoCoord[2])))
+        self.bb_GeoCoord.append(round(map(self.bb[3], 0, height_im, tifGeoCoord[3], tifGeoCoord[1])))
+
+        return self.bb_GeoCoord
+
+
+def removeDuplicates(mamoas, offset):
+    newList = []
+    flag = True
+    if mamoas:
+        newList.append(mamoas[0])
+        for i in mamoas:
+            for j in newList:
+                distance = math.sqrt(((i.pX - j.pX) ** 2) + ((i.pY - j.pY) ** 2))
+                if distance < offset:
+                    flag = False
+                    break
+            if flag:
+                newList.append(i)
+            flag = True
+    return newList
 
 def map(value, min1, max1, min2, max2):
 	return (((value - min1) * (max2 - min2)) / (max1 - min1)) + min2
@@ -64,10 +92,10 @@ def detectYoloSeg(filename, step=20):
     #load model
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     model = attempt_load(weights, device=device)
-    # device = select_device()
     # model = DetectMultiBackend(weights, device=device , fp16=False)
     # model = model.eval()
     dim = 640
+    slide = round(dim * (step / 100))
 
     xmin, ymin, xmax, ymax = 0, 0, dim, dim
 
@@ -79,11 +107,11 @@ def detectYoloSeg(filename, step=20):
     image = Image.open(filename).convert('RGB')
     width_im, height_im = image.size
 
-    # xy = (523, 2140, 7500, 5363)
+    xy = (523, 2140, 7500, 5363)
     # xy = (0, 43000, 1200, 43700)
     # xy = (4650, 3210, 6000, 4260)
-    xy = (0, 22622, 2660, 24700)
-    xy = (0, 22622, 640, 22622 + 640)
+    # xy = (0, 22622, 2660, 24700)
+    # xy = (0, 22622, 640, 22622 + 640)
     
     image = image.crop(xy)
     image.save("teste_ground.tif")
@@ -97,18 +125,40 @@ def detectYoloSeg(filename, step=20):
     rows = round((height_im / dim) / (step / 100))
     columns = round((width_im / dim) / (step / 100))
 
-    for row in range(round(rows)):
-        for column in range(round(columns)):
+    im = cv2.imread("teste_ground.tif")
+    count = 0
+    for row in range(int(rows)):
+        for column in range(int(columns)):
+            print("\r", round((count / (rows * columns)) * 100, 1), "%", flush=True, end="")
+            count += 1
             img_cropped = image.crop((xmin, ymin, xmax, ymax))
             res = resultYoloSeg(img_cropped, model, device)
-            break 
-        break
+            if res:
+                for mamoa in res:
+                    bb_aux = []
+                    for point in mamoa:
+                        point[0] += xmin
+                        point[1] += ymin
+                    bb_aux.append(round(min([mamoa[i][0] for i in range(len(mamoa))])))
+                    bb_aux.append(round(min([mamoa[i][1] for i in range(len(mamoa))])))
+                    bb_aux.append(round(max([mamoa[i][0] for i in range(len(mamoa))])))
+                    bb_aux.append(round(max([mamoa[i][1] for i in range(len(mamoa))])))
+                    pX = bb_aux[0] + (bb_aux[2] - bb_aux[0]) / 2
+                    pY = bb_aux[1] + (bb_aux[3] - bb_aux[1]) / 2
+                    mamoas.append(Mamoa(pX, pY, bb_aux, mamoa))
+            xmin += slide
+            xmax += slide
+        xmin = 0
+        xmax = dim
+        ymin += slide
+        ymax += slide
+
+    mamoas = removeDuplicates(mamoas, 15)
     
-    im = cv2.imread("teste_ground.tif")
-    for mamoa in res:
-        for point in mamoa:
-            cv2.circle(im, (int(point[0]), int(point[1])), 1, (0, 0, 255), 1)
+    print("Mamoas encontradas:", len(mamoas))
+    for mamoa in mamoas:
+            cv2.rectangle(im, (mamoa.bb[0], mamoa.bb[1]), (mamoa.bb[2], mamoa.bb[3]), (0, 255, 0), 2)
     cv2.imwrite("teste_ground.tif", im)
 
 if __name__ == '__main__':
-    detectYoloSeg('Arcos-lrm.tif')
+    detectYoloSeg('Arcos-lrm.tif', step=40)

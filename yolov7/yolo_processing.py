@@ -1,4 +1,6 @@
 from PIL import Image
+import pyqtree
+import glob
 import os.path
 import sys
 from click import group
@@ -198,16 +200,19 @@ def detectYolov7(filename, step=20, offset=20):
 
     print("Running YOLOv7")
     mamoas = []
-    weights = 'best_not_aug.pt'
     validationModel = pickle.load(open("pointCloud.sav", "rb"))
     pointClouds = "../LAS/"
     polygonsCsv = "Segmentation.csv"
 
+    weights = []
+    for w in glob.glob("weights_folds/folds/" + "*.pt"):
+        weights.append(w)
 
-    spindex = pyqtree.Index(bbox=(0, 0, 100, 100))
-    for cloud in os.listdir(pointClouds):
-        with laspy.open(pointClouds + '/' + cloud) as f:
-            spindex.insert(pointClouds + '/' + cloud, (f.header.x_min, f.header.y_min, f.header.x_max, f.header.y_max))
+
+    # spindex = pyqtree.Index(bbox=(0, 0, 100, 100))
+    # for cloud in os.listdir(pointClouds):
+    #     with laspy.open(pointClouds + '/' + cloud) as f:
+    #         spindex.insert(pointClouds + '/' + cloud, (f.header.x_min, f.header.y_min, f.header.x_max, f.header.y_max))
 
 
     polygons = []
@@ -286,8 +291,8 @@ def detectYolov7(filename, step=20, offset=20):
         ymax += slide
 
     mamoas = removeDuplicates(mamoas, offset)
-    for mamoa in mamoas:
-        mamoa.validation = pointCloud(validationModel, pointClouds, mamoa.bb_GeoCoord)
+    # for mamoa in mamoas:
+    #     mamoa.validation = pointCloud(validationModel, pointClouds, mamoa.bb_GeoCoord)
 
     image = cv2.imread("teste_ground.tif")	#type: ignore
     print("tamanho", len(mamoas))
@@ -300,12 +305,12 @@ def detectYolov7(filename, step=20, offset=20):
     # ground_truth = convert_polygon_to_bb("anotacoes_arcos.csv")
     # with open("results/not_aug/results_Arcos.csv", "r") as f:
     #     rows = csv.reader(f)
-    for g in mamoas:
-        xmin = map(int(g.bb_GeoCoord[0]), tifGeoCoord[0], tifGeoCoord[2], 0, width_im)
-        ymin = map(int(g.bb_GeoCoord[1]), tifGeoCoord[1], tifGeoCoord[3], height_im, 0)
-        xmax = map(int(g.bb_GeoCoord[2]), tifGeoCoord[0], tifGeoCoord[2], 0, width_im)
-        ymax = map(int(g.bb_GeoCoord[3]), tifGeoCoord[1], tifGeoCoord[3], height_im, 0)
-        cv2.rectangle(image, (int(xmin), int(ymin)), (int(xmax), int(ymax)), (0, 0, 255), 2)	#type: ignore
+    # for g in mamoas:
+    #     xmin = map(int(g.bb_GeoCoord[0]), tifGeoCoord[0], tifGeoCoord[2], 0, width_im)
+    #     ymin = map(int(g.bb_GeoCoord[1]), tifGeoCoord[1], tifGeoCoord[3], height_im, 0)
+    #     xmax = map(int(g.bb_GeoCoord[2]), tifGeoCoord[0], tifGeoCoord[2], 0, width_im)
+    #     ymax = map(int(g.bb_GeoCoord[3]), tifGeoCoord[1], tifGeoCoord[3], height_im, 0)
+    #     cv2.rectangle(image, (int(xmin), int(ymin)), (int(xmax), int(ymax)), (0, 0, 255), 2)	#type: ignore
 
 
     with open("anotacoes_arcos.csv") as c:

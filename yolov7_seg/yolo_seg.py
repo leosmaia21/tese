@@ -107,11 +107,11 @@ def detectYoloSeg(filename, step=20):
     image = Image.open(filename).convert('RGB')
     width_im, height_im = image.size
 
-    xy = (523, 2140, 7500, 5363)
+    # xy = (523, 2140, 7500, 5363)
     # xy = (0, 43000, 1200, 43700)
     # xy = (4650, 3210, 6000, 4260)
     # xy = (0, 22622, 2660, 24700)
-    # xy = (0, 22622, 640, 22622 + 640)
+    xy = (0, 22622, 640, 22622 + 640)
     
     image = image.crop(xy)
     image.save("teste_ground.tif")
@@ -157,7 +157,11 @@ def detectYoloSeg(filename, step=20):
     
     print("Mamoas encontradas:", len(mamoas))
     for mamoa in mamoas:
-            cv2.rectangle(im, (mamoa.bb[0], mamoa.bb[1]), (mamoa.bb[2], mamoa.bb[3]), (0, 255, 0), 2)
+        for point in mamoa.seg:
+            cv2.circle(im, (int(point[0]), int(point[1])), 1, (0, 0, 255), -1)
+
+
+            # cv2.rectangle(im, (mamoa.bb[0], mamoa.bb[1]), (mamoa.bb[2], mamoa.bb[3]), (0, 255, 0), 2)
     cv2.imwrite("teste_ground.tif", im)
 
 if __name__ == '__main__':

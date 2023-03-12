@@ -6,8 +6,6 @@
     <mapping directory="$PROJECT_DIR$/mask_rcnn_yolov7_test/rep_yolo_seg" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/mask_rcnn_yolov7_test/yolov7" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/mask_rcnn_yolov7_test/yolov7/detectron2" vcs="Git" />
-    <mapping directory="$PROJECT_DIR$/processing_mamoas/Mask_RCNN" vcs="Git" />
-    <mapping directory="$PROJECT_DIR$/processing_mamoas/yolov5" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/yolov7/yolov7" vcs="Git" />
   </component>
 </project>
